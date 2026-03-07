@@ -2,13 +2,16 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,6 +47,8 @@ var fallbackThemes = []string{
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
 
 	rootCmd := &cobra.Command{
 		Use:   "gh-ghostty",
@@ -57,7 +62,7 @@ func main() {
 	rootCmd.AddCommand(currentCmd())
 	rootCmd.AddCommand(previewCmd())
 
-	if err := rootCmd.Execute(); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
 }
