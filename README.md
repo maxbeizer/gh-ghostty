@@ -17,6 +17,7 @@ gh ghostty set --dark <theme> --light <theme> # Separate light/dark
 gh ghostty random                            # Random theme
 gh ghostty current                           # Show current theme
 gh ghostty preview <theme>                   # Set temporarily, prompt keep/revert
+gh ghostty pick                              # Interactive fuzzy search and select
 ```
 
 ## How it works

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -61,6 +62,7 @@ func main() {
 	rootCmd.AddCommand(randomCmd())
 	rootCmd.AddCommand(currentCmd())
 	rootCmd.AddCommand(previewCmd())
+	rootCmd.AddCommand(pickCmd())
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
@@ -215,6 +217,43 @@ func previewCmd() *cobra.Command {
 			}
 			reloadGhostty(cmd)
 			fmt.Fprintln(cmd.OutOrStdout(), "Reverted to previous theme.")
+			return nil
+		},
+	}
+}
+
+func pickCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pick",
+		Short: "Interactively search and select a theme",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			themes, err := listThemes()
+			if err != nil {
+				return err
+			}
+			if len(themes) == 0 {
+				return errors.New("no themes available")
+			}
+
+			var choice string
+			prompt := &survey.Select{
+				Message: "Pick a theme:",
+				Options: themes,
+			}
+			if err := survey.AskOne(prompt, &choice); err != nil {
+				return err
+			}
+
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			updated := setThemeInLines(lines, choice)
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set theme to %s\n", choice)
 			return nil
 		},
 	}

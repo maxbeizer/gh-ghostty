@@ -20,6 +20,7 @@ A `gh` CLI extension (Go, single-binary) that manages [Ghostty](https://ghostty.
 | `set <theme>` | Set theme (supports `--dark`/`--light` flags) |
 | `random` | Pick and apply a random theme |
 | `current` | Show the current theme |
+| `pick` | Interactive fuzzy-search theme picker |
 | `preview <theme>` | Apply theme temporarily, prompt to keep or revert |
 
 ## Build & Test
@@ -46,5 +47,5 @@ make tidy         # go mod tidy
 ## Style
 
 - Minimal comments — only where logic is non-obvious.
-- No external dependencies beyond cobra.
+- No external dependencies beyond cobra and [survey](https://github.com/AlecAivazis/survey) (same prompt library used by `gh` CLI).
 - Functions that manipulate config lines (`parseConfigLine`, `setThemeInLines`, `currentThemeFromLines`) are pure and easy to test.
