@@ -24,17 +24,22 @@ gh ghostty pick                              # Interactive fuzzy search and sele
 
 - Reads/writes Ghostty config at `~/.config/ghostty/config`
 - Updates `theme = ...` or `theme = dark:Name,light:Name`
-- Signals Ghostty to live reload (`killall -SIGUSR2 ghostty`) after changes
+- Triggers Ghostty config reload via AppleScript on macOS after changes
 - `list` pulls from `ghostty +list-themes` and falls back to a bundled list
 
 ## Notes
 
-- If Ghostty isn't running, you'll see a reload warning. Just restart Ghostty.
+- Config reload uses AppleScript on macOS to simulate `Cmd+Shift+,`. If Ghostty isn't running or focused, you may need to reload manually.
 - The config format is simple `key = value` lines with `#` comments.
 
 ## Development
 
 ```bash
-go build ./...
-./gh-ghostty list
+make build        # Build to bin/gh-ghostty
+make test         # Run unit tests
+make ci           # Build + vet + test with race detector
 ```
+
+## License
+
+[MIT](LICENSE)
