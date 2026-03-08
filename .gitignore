@@ -13,3 +13,6 @@ coverage.out
 
 # OS
 .DS_Store
+
+# Copilot hooks (local symlink)
+.github/hooks/
