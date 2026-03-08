@@ -229,7 +229,7 @@ func listThemes() ([]string, error) {
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line != "" {
-				themes = append(themes, line)
+				themes = append(themes, stripThemeSuffix(line))
 			}
 		}
 		if len(themes) > 0 {
@@ -239,20 +239,38 @@ func listThemes() ([]string, error) {
 	return fallbackThemes, nil
 }
 
+// stripThemeSuffix removes the " (resources)" or similar parenthetical suffix
+// that ghostty +list-themes appends to theme names.
+func stripThemeSuffix(name string) string {
+	if idx := strings.LastIndex(name, " ("); idx >= 0 && strings.HasSuffix(name, ")") {
+		return name[:idx]
+	}
+	return name
+}
+
 func reloadGhostty(cmd *cobra.Command) {
-	reload := exec.Command("killall", "-SIGUSR2", "ghostty")
+	reload := exec.Command("osascript", "-e",
+		`tell application "System Events" to keystroke "," using {command down, shift down}`)
 	if err := reload.Run(); err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Could not signal Ghostty for live reload.")
-		fmt.Fprintln(cmd.ErrOrStderr(), "Restart Ghostty or run: killall -SIGUSR2 ghostty")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Could not trigger Ghostty config reload.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Press Cmd+Shift+, in Ghostty to reload manually.")
 	}
 }
 
-func configPath() (string, error) {
+// configPathFunc is the function used to resolve the Ghostty config path.
+// Override in tests to use a temp directory.
+var configPathFunc = defaultConfigPath
+
+func defaultConfigPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, ".config", configDirName, configFileName), nil
+}
+
+func configPath() (string, error) {
+	return configPathFunc()
 }
 
 func readConfigLines() ([]string, error) {
