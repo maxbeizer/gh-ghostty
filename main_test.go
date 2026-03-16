@@ -410,3 +410,400 @@ func TestSetCommand_Validation(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Generic config helpers
+// ---------------------------------------------------------------------------
+
+func TestGetConfigFromLines(t *testing.T) {
+	lines := []string{"font-size = 14", "theme = Dracula", "cursor-style = block"}
+
+	tests := []struct {
+		key    string
+		want   string
+		wantOK bool
+	}{
+		{"font-size", "14", true},
+		{"theme", "Dracula", true},
+		{"cursor-style", "block", true},
+		{"missing-key", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			val, ok := getConfigFromLines(lines, tt.key)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if val != tt.want {
+				t.Errorf("val = %q, want %q", val, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetConfigInLines(t *testing.T) {
+	t.Run("replaces existing key", func(t *testing.T) {
+		lines := []string{"font-size = 14", "cursor-style = block"}
+		got := setConfigInLines(lines, "font-size", "16")
+		if got[0] != "font-size = 16" {
+			t.Errorf("got %q, want %q", got[0], "font-size = 16")
+		}
+		if len(got) != 2 {
+			t.Errorf("expected 2 lines, got %d", len(got))
+		}
+	})
+
+	t.Run("appends when key not present", func(t *testing.T) {
+		lines := []string{"theme = Nord"}
+		got := setConfigInLines(lines, "font-size", "14")
+		if len(got) != 2 {
+			t.Fatalf("expected 2 lines, got %d", len(got))
+		}
+		if got[1] != "font-size = 14" {
+			t.Errorf("got %q, want %q", got[1], "font-size = 14")
+		}
+	})
+
+	t.Run("empty lines slice", func(t *testing.T) {
+		got := setConfigInLines([]string{}, "background-opacity", "0.8")
+		if len(got) != 1 || got[0] != "background-opacity = 0.8" {
+			t.Errorf("unexpected result: %v", got)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// config get / config set commands
+// ---------------------------------------------------------------------------
+
+func TestConfigGetCommand(t *testing.T) {
+	t.Run("gets existing value", func(t *testing.T) {
+		cleanup := withTempConfig(t, "font-size = 14\ncursor-style = block\n")
+		defer cleanup()
+
+		cmd := configCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{"get", "font-size"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(buf.String()) != "14" {
+			t.Errorf("got %q, want %q", strings.TrimSpace(buf.String()), "14")
+		}
+	})
+
+	t.Run("shows not set for missing key", func(t *testing.T) {
+		cleanup := withTempConfig(t, "font-size = 14\n")
+		defer cleanup()
+
+		cmd := configCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{"get", "cursor-style"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), "not set") {
+			t.Errorf("expected 'not set' message, got %q", buf.String())
+		}
+	})
+}
+
+func TestConfigSetCommand(t *testing.T) {
+	cleanup := withTempConfig(t, "font-size = 14\n")
+	defer cleanup()
+
+	cmd := configCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"set", "cursor-style", "bar"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := readConfigLines()
+	if err != nil {
+		t.Fatal(err)
+	}
+	val, ok := getConfigFromLines(lines, "cursor-style")
+	if !ok || val != "bar" {
+		t.Errorf("config not set: got (%q, %v)", val, ok)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Convenience commands
+// ---------------------------------------------------------------------------
+
+func TestFontSizeCommand(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		cleanup := withTempConfig(t, "font-size = 14\n")
+		defer cleanup()
+
+		cmd := fontSizeCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(buf.String()) != "14" {
+			t.Errorf("got %q, want %q", strings.TrimSpace(buf.String()), "14")
+		}
+	})
+
+	t.Run("get not set", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := fontSizeCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), "not set") {
+			t.Errorf("expected 'not set', got %q", buf.String())
+		}
+	})
+
+	t.Run("set valid", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := fontSizeCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"16"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		lines, _ := readConfigLines()
+		val, ok := getConfigFromLines(lines, "font-size")
+		if !ok || val != "16" {
+			t.Errorf("got (%q, %v)", val, ok)
+		}
+	})
+
+	t.Run("set float", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := fontSizeCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"13.5"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		lines, _ := readConfigLines()
+		val, ok := getConfigFromLines(lines, "font-size")
+		if !ok || val != "13.5" {
+			t.Errorf("got (%q, %v)", val, ok)
+		}
+	})
+
+	t.Run("set invalid", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := fontSizeCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"abc"})
+
+		if err := cmd.Execute(); err == nil {
+			t.Error("expected error for non-numeric font size")
+		}
+	})
+}
+
+func TestFontFamilyCommand(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		cleanup := withTempConfig(t, "font-family = JetBrains Mono\n")
+		defer cleanup()
+
+		cmd := fontFamilyCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(buf.String()) != "JetBrains Mono" {
+			t.Errorf("got %q, want %q", strings.TrimSpace(buf.String()), "JetBrains Mono")
+		}
+	})
+
+	t.Run("set", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := fontFamilyCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"Fira Code"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		lines, _ := readConfigLines()
+		val, ok := getConfigFromLines(lines, "font-family")
+		if !ok || val != "Fira Code" {
+			t.Errorf("got (%q, %v)", val, ok)
+		}
+	})
+}
+
+func TestCursorStyleCommand(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		cleanup := withTempConfig(t, "cursor-style = block\n")
+		defer cleanup()
+
+		cmd := cursorStyleCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(buf.String()) != "block" {
+			t.Errorf("got %q, want %q", strings.TrimSpace(buf.String()), "block")
+		}
+	})
+
+	t.Run("set valid styles", func(t *testing.T) {
+		for _, style := range []string{"block", "bar", "underline", "block_hollow"} {
+			t.Run(style, func(t *testing.T) {
+				cleanup := withTempConfig(t, "theme = Nord\n")
+				defer cleanup()
+
+				cmd := cursorStyleCmd()
+				buf := new(bytes.Buffer)
+				cmd.SetOut(buf)
+				cmd.SetErr(new(bytes.Buffer))
+				cmd.SetArgs([]string{style})
+
+				if err := cmd.Execute(); err != nil {
+					t.Fatal(err)
+				}
+				lines, _ := readConfigLines()
+				val, ok := getConfigFromLines(lines, "cursor-style")
+				if !ok || val != style {
+					t.Errorf("got (%q, %v)", val, ok)
+				}
+			})
+		}
+	})
+
+	t.Run("set invalid style", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := cursorStyleCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"invalid"})
+
+		if err := cmd.Execute(); err == nil {
+			t.Error("expected error for invalid cursor style")
+		}
+	})
+}
+
+func TestBackgroundOpacityCommand(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
+		cleanup := withTempConfig(t, "background-opacity = 0.8\n")
+		defer cleanup()
+
+		cmd := backgroundOpacityCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetArgs([]string{})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(buf.String()) != "0.8" {
+			t.Errorf("got %q, want %q", strings.TrimSpace(buf.String()), "0.8")
+		}
+	})
+
+	t.Run("set valid", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := backgroundOpacityCmd()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"0.5"})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		lines, _ := readConfigLines()
+		val, ok := getConfigFromLines(lines, "background-opacity")
+		if !ok || val != "0.5" {
+			t.Errorf("got (%q, %v)", val, ok)
+		}
+	})
+
+	t.Run("set out of range", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := backgroundOpacityCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"1.5"})
+
+		if err := cmd.Execute(); err == nil {
+			t.Error("expected error for opacity > 1.0")
+		}
+	})
+
+	t.Run("set negative", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := backgroundOpacityCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"-0.1"})
+
+		if err := cmd.Execute(); err == nil {
+			t.Error("expected error for negative opacity")
+		}
+	})
+
+	t.Run("set non-numeric", func(t *testing.T) {
+		cleanup := withTempConfig(t, "theme = Nord\n")
+		defer cleanup()
+
+		cmd := backgroundOpacityCmd()
+		cmd.SetOut(new(bytes.Buffer))
+		cmd.SetErr(new(bytes.Buffer))
+		cmd.SetArgs([]string{"abc"})
+
+		if err := cmd.Execute(); err == nil {
+			t.Error("expected error for non-numeric opacity")
+		}
+	})
+}
