@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -53,8 +54,8 @@ func main() {
 
 	rootCmd := &cobra.Command{
 		Use:   "gh-ghostty",
-		Short: "Ghostty theme switcher",
-		Long:  "Manage Ghostty themes directly from the gh CLI.",
+		Short: "Manage Ghostty terminal configuration",
+		Long:  "Manage Ghostty themes and configuration directly from the gh CLI.",
 	}
 
 	rootCmd.AddCommand(listCmd())
@@ -63,6 +64,11 @@ func main() {
 	rootCmd.AddCommand(currentCmd())
 	rootCmd.AddCommand(previewCmd())
 	rootCmd.AddCommand(pickCmd())
+	rootCmd.AddCommand(configCmd())
+	rootCmd.AddCommand(fontSizeCmd())
+	rootCmd.AddCommand(fontFamilyCmd())
+	rootCmd.AddCommand(cursorStyleCmd())
+	rootCmd.AddCommand(backgroundOpacityCmd())
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
@@ -259,6 +265,203 @@ func pickCmd() *cobra.Command {
 	}
 }
 
+func configCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Get or set Ghostty configuration options",
+		Long:  "Read and write arbitrary Ghostty configuration options in ~/.config/ghostty/config.",
+	}
+
+	cmd.AddCommand(configGetCmd())
+	cmd.AddCommand(configSetCmd())
+	return cmd
+}
+
+func configGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "get <key>",
+		Short: "Get a configuration value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			value, ok := getConfigFromLines(lines, args[0])
+			if !ok {
+				fmt.Fprintf(cmd.OutOrStdout(), "(%s not set)\n", args[0])
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), value)
+			return nil
+		},
+	}
+}
+
+func configSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Set a configuration value",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			updated := setConfigInLines(lines, args[0], args[1])
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set %s to %s\n", args[0], args[1])
+			return nil
+		},
+	}
+}
+
+func fontSizeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "font-size [size]",
+		Short: "Get or set the font size",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				value, ok := getConfigFromLines(lines, "font-size")
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "(font-size not set)")
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+				}
+				return nil
+			}
+			size := args[0]
+			if _, err := strconv.ParseFloat(size, 64); err != nil {
+				return fmt.Errorf("invalid font size %q: must be a number", size)
+			}
+			updated := setConfigInLines(lines, "font-size", size)
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set font-size to %s\n", size)
+			return nil
+		},
+	}
+}
+
+func fontFamilyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "font-family [name]",
+		Short: "Get or set the font family",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				value, ok := getConfigFromLines(lines, "font-family")
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "(font-family not set)")
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+				}
+				return nil
+			}
+			updated := setConfigInLines(lines, "font-family", args[0])
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set font-family to %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+func cursorStyleCmd() *cobra.Command {
+	validStyles := []string{"block", "bar", "underline", "block_hollow"}
+
+	return &cobra.Command{
+		Use:   "cursor-style [style]",
+		Short: "Get or set the cursor style",
+		Long:  "Get or set the cursor style. Valid styles: block, bar, underline, block_hollow.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				value, ok := getConfigFromLines(lines, "cursor-style")
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "(cursor-style not set)")
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+				}
+				return nil
+			}
+			style := args[0]
+			valid := false
+			for _, s := range validStyles {
+				if s == style {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("invalid cursor style %q: must be one of %s", style, strings.Join(validStyles, ", "))
+			}
+			updated := setConfigInLines(lines, "cursor-style", style)
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set cursor-style to %s\n", style)
+			return nil
+		},
+	}
+}
+
+func backgroundOpacityCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "background-opacity [value]",
+		Short: "Get or set the background opacity",
+		Long:  "Get or set the background opacity (0.0 to 1.0).",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lines, err := readConfigLines()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				value, ok := getConfigFromLines(lines, "background-opacity")
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "(background-opacity not set)")
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), value)
+				}
+				return nil
+			}
+			val, err := strconv.ParseFloat(args[0], 64)
+			if err != nil || val < 0 || val > 1 {
+				return fmt.Errorf("invalid background-opacity %q: must be a number between 0.0 and 1.0", args[0])
+			}
+			updated := setConfigInLines(lines, "background-opacity", args[0])
+			if err := writeConfigLines(updated); err != nil {
+				return err
+			}
+			reloadGhostty(cmd)
+			fmt.Fprintf(cmd.OutOrStdout(), "Set background-opacity to %s\n", args[0])
+			return nil
+		},
+	}
+}
+
 func listThemes() ([]string, error) {
 	cmd := exec.Command("ghostty", "+list-themes")
 	output, err := cmd.Output()
@@ -345,25 +548,33 @@ func writeConfigLines(lines []string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func currentThemeFromLines(lines []string) (string, bool) {
+func getConfigFromLines(lines []string, targetKey string) (string, bool) {
 	for _, line := range lines {
 		key, value, ok := parseConfigLine(line)
-		if ok && key == "theme" {
+		if ok && key == targetKey {
 			return value, true
 		}
 	}
 	return "", false
 }
 
-func setThemeInLines(lines []string, value string) []string {
+func setConfigInLines(lines []string, targetKey, value string) []string {
 	for i, line := range lines {
 		key, _, ok := parseConfigLine(line)
-		if ok && key == "theme" {
-			lines[i] = fmt.Sprintf("theme = %s", value)
+		if ok && key == targetKey {
+			lines[i] = fmt.Sprintf("%s = %s", targetKey, value)
 			return lines
 		}
 	}
-	return append(lines, fmt.Sprintf("theme = %s", value))
+	return append(lines, fmt.Sprintf("%s = %s", targetKey, value))
+}
+
+func currentThemeFromLines(lines []string) (string, bool) {
+	return getConfigFromLines(lines, "theme")
+}
+
+func setThemeInLines(lines []string, value string) []string {
+	return setConfigInLines(lines, "theme", value)
 }
 
 func parseConfigLine(line string) (string, string, bool) {
