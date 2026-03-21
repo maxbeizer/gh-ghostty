@@ -1,7 +1,7 @@
-project_name: gh-ghostty
+project_name: gh-extension-template
 
 builds:
-  - binary: gh-ghostty
+  - binary: gh-extension-template
     goos:
       - darwin
       - linux
