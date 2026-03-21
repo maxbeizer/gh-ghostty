@@ -1,51 +1,109 @@
-# Copilot Instructions for gh-ghostty
+# Copilot Instructions for gh-extension-template
 
-## What this is
+## Project Overview
+This is a Go-based GitHub CLI extension that demonstrates best practices for building extensible CLI tools. The project uses the `gh` CLI extension framework and follows modern Go development patterns.
 
-A `gh` CLI extension (Go, single-binary) that manages [Ghostty](https://ghostty.org) terminal themes. It reads and writes `~/.config/ghostty/config` and signals Ghostty to live-reload.
+## Technology Stack
+- **Language**: Go
+- **Framework**: GitHub CLI (gh) extension framework  
+- **Testing**: Go standard library testing package
 
-## Architecture
+## Go Development Guidelines
 
-- **Single-file CLI** — all logic lives in `main.go` using [cobra](https://github.com/spf13/cobra) for commands.
-- **Config format** — simple `key = value` lines with `#` comments. Theme is set via `theme = <value>` where value can be a name or `dark:<name>,light:<name>`.
-- **Theme discovery** — `ghostty +list-themes` with a hardcoded fallback list.
-- **Live reload** — simulates `Cmd+Shift+,` via AppleScript to trigger Ghostty's config reload on macOS.
-- **Testability** — `configPathFunc` is a package-level var so tests can redirect I/O to temp dirs.
+### Code Organization
+- Follow Go project layout conventions (main package in root, reusable code in subdirectories)
+- Use the `go mod` system for dependency management
+- Organize packages by functionality, not by layer
 
-## Commands
+### Go Idioms and Standard Library
+- Use the Go standard library exclusively where possible (avoid external dependencies)
+- Follow idiomatic Go patterns:
+  - Use interfaces for abstraction and testability
+  - Prefer composition over inheritance
+  - Use goroutines and channels for concurrency
+  - Handle errors explicitly, no exceptions
+  - Use defer for resource cleanup
+- Return errors as the last return value: `(result Type, err error)`
 
-| Command | Description |
-|---------|-------------|
-| `list` | List available Ghostty themes |
-| `set <theme>` | Set theme (supports `--dark`/`--light` flags) |
-| `random` | Pick and apply a random theme |
-| `current` | Show the current theme |
-| `pick` | Interactive fuzzy-search theme picker |
-| `preview <theme>` | Apply theme temporarily, prompt to keep or revert |
+### Naming Conventions
+- **Variables and Functions**: Use camelCase for unexported, PascalCase for exported
+- **Constants**: Use ALL_CAPS for package-scoped constants
+- **Packages**: Use short, lowercase names (single word where possible)
+- **Receivers**: Use short 1-2 letter names like `f`, `s`, `r` for receiver variables
+- **Methods**: Name methods by their action and what they return (e.g., `GetConfig()`, `IsValid()`)
 
-## Build & Test
+### Testing
+- Write table-driven tests for comprehensive coverage:
+  - Define test cases as a slice of anonymous structs
+  - Include input, expected output, and error conditions
+  - Use subtests with `t.Run()` for better test isolation and reporting
+- Test file naming: `*_test.go` in the same package
+- Aim for high coverage, especially for CLI argument parsing and core logic
 
-```bash
-make build        # Build to bin/gh-ghostty
-make test         # Run unit tests
-make test-race    # Tests with -race and coverage
-make ci           # Build + vet + test-race
-make lint         # golangci-lint (if installed)
-make fmt          # gofmt
-make tidy         # go mod tidy
+### Example Table-Driven Test Pattern
+```go
+func TestFunctionName(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        want    string
+        wantErr bool
+    }{
+        {"valid input", "example", "output", false},
+        {"invalid input", "", "", true},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := FunctionName(tt.input)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("FunctionName() error = %v, wantErr %v", err, tt.wantErr)
+            }
+            if got != tt.want {
+                t.Errorf("FunctionName() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
 ```
 
-## Conventions
+## GitHub CLI Extension Patterns
 
-- Go 1.22+, single module, no internal packages.
-- Tests go in `main_test.go` using table-driven style.
-- Use `withTempConfig(t, content)` helper in tests to mock the config file path.
-- Commands write to `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` for testability.
-- Keep the fallback theme list in `fallbackThemes` if `ghostty +list-themes` is unavailable.
-- Releases via GoReleaser (`.goreleaser.yml`), installed as a `gh` extension.
+### Key Extension Framework Concepts
+- Use `github.com/cli/go-gh` for interacting with the GitHub API
+- Leverage the `cmdutil` package for common CLI patterns
+- Use `flag.FlagSet` for command-line argument parsing
+- Follow the standard Go CLI pattern: `command -> subcommand -> flags`
 
-## Style
+### Command Structure
+- Create a main command that handles core functionality
+- Use subcommands for different operational modes
+- Support `--help` and `-h` flags automatically
+- Provide clear, concise error messages for users
+- Use exit codes appropriately (0 for success, 1 for general errors)
 
-- Minimal comments — only where logic is non-obvious.
-- No external dependencies beyond cobra and [survey](https://github.com/AlecAivazis/survey) (same prompt library used by `gh` CLI).
-- Functions that manipulate config lines (`parseConfigLine`, `setThemeInLines`, `currentThemeFromLines`) are pure and easy to test.
+### Configuration and Flags
+- Support both flags and configuration files when appropriate
+- Use environment variables for sensitive data (following gh CLI conventions)
+- Validate all inputs before processing
+- Provide sensible defaults
+
+## Development Workflow
+
+### Building and Running
+- Build: `go build -o gh-extension-template ./cmd/...` or use Makefile
+- Run: `./gh-extension-template` or through gh CLI: `gh extension-template <command>`
+- Test: `go test ./...`
+- Coverage: `go test -cover ./...`
+
+### Code Quality
+- Run gofmt before committing: `gofmt -w .`
+- Use golint or golangci-lint for linting
+- Ensure all tests pass
+- Keep functions focused and small (aim for < 50 lines)
+- Write clear comments for exported functions and types
+
+## Documentation
+- Document exported functions and types with comment strings
+- Include examples in function documentation where helpful
+- Update README.md for user-facing changes
+- Document command-line flags and their usage
