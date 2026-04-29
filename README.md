@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> For reasons™ I no longer use Ghostty and I think you shouldn't either
+
 # gh-ghostty
 
 A `gh` CLI extension to manage Ghostty terminal themes and configuration.
